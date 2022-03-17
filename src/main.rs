@@ -19,6 +19,8 @@ extern crate rand;
 
 const TEXTURE_SIZE: u32 = 32; 
 const TETRIS_HEIGHT : usize = 40; 
+const LEVEL_TIMES: [u32; 10] = [1000,850,700,600,500,400,300,250,221,190]; 
+const LEVEL_LINES: [u32; 10] = [20,40,60,80,100,120,140,160,180,200]; 
 
 
 #[derive(Clone, Copy)]
@@ -255,6 +257,10 @@ impl Tetris {
         }
     }
 
+    
+
+    
+
     fn create_new_tretrimino(&self) -> Tetrimino{
 
         static mut PREV: u8 = 7;
@@ -277,6 +283,7 @@ impl Tetris {
     }
     fn check_lines(&mut self){
         let mut y = 0; 
+        let mut score_add = 0; 
 
         while y <  self.game_map.len(){
             let mut complete = true; 
@@ -289,18 +296,40 @@ impl Tetris {
             }
 
             if complete == true {
+                score_add += self.curr_level; 
                 self.game_map.remove(y);
                 y -= 1;
 
             }
             y +=1; 
         }
+        if self.game_map.len() == 0{
+            score_add += 1000; 
+            print!("YASSSSSSS")
+        }
+        self.update_score(score_add); 
         while self.game_map.len() < 16 {
+            self.increase_line(); 
             self.game_map.insert(0, vec![0,0,0,0,0,0,0,0,0,0]);
         }
     }
+    fn increase_level(&mut self){
+        self.curr_level +=1;
+    }
+
+    fn increase_line(&mut self){
+        self.nb_lines += 1;
+        if self.nb_lines > LEVEL_LINES[self.curr_level as usize -1]{
+            self.curr_level += 1; 
+        }
+
+
+    }
+
+   
 
     fn make_permanent(&mut self){
+        let mut to_add = 0; 
         if let Some(ref mut piece) = self.curr_piece{
             let mut shift_y = 0;
 
@@ -315,7 +344,9 @@ impl Tetris {
                 }
                 shift_y += 1;
             }
+            to_add += self.curr_level;
         }
+        self.update_score(to_add); 
         self.check_lines();
         self.curr_piece = None; 
     }
@@ -359,7 +390,16 @@ impl Tetris {
     }
     make_permanent
 }
+
+    fn update_score(&mut self, to_add: u32){
+        self.score += to_add; 
+
+    }
+    
+
+
 }
+
 
 
 
@@ -434,8 +474,21 @@ impl Tetrimino {
     fn test_curr_position(&self, game_map: &[Vec<u8>]) -> bool{
         self.test_position(game_map, self.curr_state as usize, self.x, self.y)
     }
+    
 
     
+}
+
+fn is_tijd_over(tetris: &Tetris, timer: &SystemTime) -> bool{
+    match timer.elapsed(){
+        Ok(elapsed) => {
+            let mils = elapsed.as_secs() as u32 * 1000 + elapsed.subsec_nanos() / 1_000_000; 
+            mils > LEVEL_TIMES[tetris.curr_level as usize - 1]
+        }
+        Err(_) => false,
+        
+
+    }
 }
 
 
@@ -449,36 +502,40 @@ pub fn main(){
 
     let mut event_pump = sdl_context.event_pump().expect("Could not get event pump");
 
-    loop{
-        if match timer.elapsed() {
-            Ok(elapsed) => elapsed.as_secs() >= 1,
-            Err(_) => false
-        }{
-            let mut make_permanent = false;
-            if let Some(ref mut piece) = tetris.curr_piece{
-                let x = piece.x; 
-                let y = piece.y + 1;
+    let grid_x = (2048 - TETRIS_HEIGHT as u32 * 10) as i32 / 2;
+    let grid_y = (1280 - TETRIS_HEIGHT as u32 * 16) as i32 / 2;
 
-                make_permanent = !piece.change_position(&tetris.game_map, x, y);
+    loop{
+        if is_tijd_over(&tetris, &timer){
+            let mut make_permanent = false; 
+            if let Some(ref mut peice) = tetris.curr_piece{
+                let x = peice.x;
+                let y = peice.y; 
+                make_permanent = !peice.change_position(&tetris.game_map, x,y);
             }
-            if make_permanent {
-                tetris.make_permanent();
-            }
-            timer = SystemTime::now();
+            if make_permanent {tetris.make_permanent()}
+            timer = SystemTime::now()
         }
+        // tetris grid code here
 
         if tetris.curr_piece.is_none(){
-            let current_piece = tetris.create_new_tretrimino();
-            if !current_piece.test_curr_position(&tetris.game_map){
+            let curr_piece = tetris.create_new_tretrimino();
+            if !curr_piece.test_curr_position(&tetris.game_map){
                 break
             }
-            tetris.curr_piece = Some(current_piece);
+            tetris.curr_piece = Some(curr_piece);
         }
         let mut quit = false; 
         
-        if quit {
+        if !handle_events(&mut tetris, &mut quit, &mut timer, &mut event_pump){
+            if let Some(ref mut piece) = tetris.curr_piece{
+                //curr tetrimino to go here
+            }
+        }
+        if quit{
             break
         }
+       
 
         sleep(Duration::new(0, 1_000_000_000u32 / 60));
     }
